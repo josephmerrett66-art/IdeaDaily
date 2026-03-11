@@ -1,0 +1,2754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IdeaDaily — Flex Your Creative Muscle</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cabinet+Grotesk:wght@300;400;500;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script type="module">
+// ===== FIREBASE SETUP =====
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
+import { getFirestore, doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCU32Ym3p0rg62MoQL3-A7zJZ2ElmlW0eQ",
+  authDomain: "josephmerrett66-art.github.io",
+  projectId: "idea-daily",
+  storageBucket: "idea-daily.firebasestorage.app",
+  messagingSenderId: "532309594096",
+  appId: "1:532309594096:web:e07522a392a977a2e3d735",
+  measurementId: "G-453P26M5KV"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const provider = new GoogleAuthProvider();
+provider.setCustomParameters({ prompt: 'select_account' });
+
+window._fbSignIn = async () => {
+  try {
+    const result = await signInWithPopup(auth, provider);
+    return result;
+  } catch(e) {
+    // Popup blocked — fall back to redirect
+    if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
+      return signInWithRedirect(auth, provider);
+    }
+    throw e;
+  }
+};
+
+window._fbSignOut = () => signOut(auth);
+
+window._saveToFirestore = async (stateObj) => {
+  if (!window._currentUser) return;
+  try {
+    const ref = doc(db, 'users', window._currentUser.uid);
+    await setDoc(ref, { state: stateObj, updatedAt: new Date().toISOString() }, { merge: true });
+  } catch(e) { console.warn('Firestore save error', e); }
+};
+
+// Check for redirect result on page load
+getRedirectResult(auth).then(async (result) => {
+  if (result && result.user) {
+    window._currentUser = result.user;
+    try {
+      const ref = doc(db, 'users', result.user.uid);
+      const snap = await getDoc(ref);
+      if (snap.exists()) window._loadedFromFirestore = snap.data().state || null;
+    } catch(e) {}
+    window._onAuthReady && window._onAuthReady(result.user);
+  }
+}).catch(e => console.warn('Redirect result:', e));
+
+onAuthStateChanged(auth, async (user) => {
+  if (user) {
+    window._currentUser = user;
+    try {
+      const ref = doc(db, 'users', user.uid);
+      const snap = await getDoc(ref);
+      if (snap.exists()) window._loadedFromFirestore = snap.data().state || null;
+    } catch(e) {}
+    window._onAuthReady && window._onAuthReady(user);
+  } else {
+    window._currentUser = null;
+    window._onAuthReady && window._onAuthReady(null);
+  }
+});
+</script>
+<style>
+:root {
+  --bg: #080810;
+  --surface: #0f0f1a;
+  --card: #13131f;
+  --card2: #1a1a2e;
+  --border: #ffffff0f;
+  --border2: #ffffff18;
+  --text: #f2f2ff;
+  --muted: #6b6b8a;
+  --muted2: #9090b0;
+
+  --common:    #8888aa;
+  --uncommon:  #4ade80;
+  --rare:      #38bdf8;
+  --epic:      #c084fc;
+  --legendary: #fb923c;
+
+  --xp: #f5e642;
+  --accent: #f5e642;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Cabinet Grotesk', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Noise texture overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.6;
+}
+
+/* Ambient glow */
+.ambient {
+  position: fixed;
+  width: 600px; height: 600px;
+  border-radius: 50%;
+  filter: blur(120px);
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.12;
+}
+.ambient-1 { background: #7c3aed; top: -200px; left: -100px; }
+.ambient-2 { background: #f5e642; bottom: -200px; right: -100px; opacity: 0.06; }
+
+.app { position: relative; z-index: 1; max-width: 680px; margin: 0 auto; padding: 0 20px 120px; }
+
+/* ===== TOP NAV ===== */
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 0 32px;
+}
+
+.logo {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.8rem;
+  letter-spacing: 0.08em;
+  color: var(--text);
+}
+.logo em { color: var(--accent); font-style: normal; }
+
+.nav-right { display: flex; align-items: center; gap: 12px; }
+
+.streak-badge {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--card);
+  border: 1px solid var(--border2);
+  border-radius: 100px;
+  padding: 7px 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+}
+.streak-badge .fire { font-size: 1rem; }
+.streak-badge .num { color: var(--accent); font-weight: 700; }
+
+.xp-badge {
+  display: flex; align-items: center; gap: 6px;
+  background: linear-gradient(135deg, #1a1a0d, #2a2a10);
+  border: 1px solid rgba(245,230,66,0.2);
+  border-radius: 100px;
+  padding: 7px 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  color: var(--accent);
+}
+
+/* ===== XP BAR ===== */
+.xp-bar-wrap {
+  margin-bottom: 28px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.xp-level-label {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.1rem;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.xp-track {
+  flex: 1;
+  height: 4px;
+  background: var(--card2);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.xp-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #ff9500);
+  border-radius: 10px;
+  transition: width 1s cubic-bezier(0.34,1.56,0.64,1);
+}
+.xp-next {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* ===== HERO CHALLENGE CARD ===== */
+.challenge-hero {
+  border-radius: 20px;
+  padding: 32px;
+  margin-bottom: 20px;
+  position: relative;
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--border2);
+}
+
+.challenge-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at top right, rgba(124,58,237,0.12) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.challenge-eyebrow {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pulse-dot {
+  width: 6px; height: 6px;
+  background: var(--accent);
+  border-radius: 50%;
+  animation: pulseDot 2s infinite;
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.6); }
+}
+
+.challenge-headline {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(2.4rem, 7vw, 3.6rem);
+  line-height: 0.95;
+  letter-spacing: 0.02em;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, #f2f2ff 0%, #a0a0cc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.challenge-sub {
+  color: var(--muted2);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  max-width: 480px;
+}
+
+/* ===== CATEGORY PICKER ===== */
+.section-eyebrow {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.cat-btn {
+  background: var(--card);
+  border: 1px solid var(--border2);
+  color: var(--muted2);
+  border-radius: 10px;
+  padding: 8px 16px;
+  font-size: 0.88rem;
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.cat-btn:hover { border-color: rgba(245,230,66,0.3); color: var(--text); }
+.cat-btn.active {
+  background: rgba(245,230,66,0.1);
+  border-color: rgba(245,230,66,0.5);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* ===== IDEA INPUT ===== */
+.input-wrap {
+  background: var(--card);
+  border: 1px solid var(--border2);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 16px;
+  transition: border-color 0.2s;
+}
+.input-wrap:focus-within { border-color: rgba(245,230,66,0.35); }
+
+.idea-textarea {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-size: 1.05rem;
+  line-height: 1.65;
+  resize: none;
+  min-height: 110px;
+}
+.idea-textarea::placeholder { color: var(--muted); }
+
+.input-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.char-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.submit-btn {
+  background: var(--accent);
+  color: #000;
+  border: none;
+  border-radius: 10px;
+  padding: 11px 26px;
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-weight: 800;
+  font-size: 0.92rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.01em;
+}
+.submit-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(245,230,66,0.25); }
+.submit-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ===== DONE TODAY BANNER ===== */
+.done-banner {
+  display: none;
+  background: rgba(74,222,128,0.06);
+  border: 1px solid rgba(74,222,128,0.2);
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  font-size: 0.9rem;
+  color: #4ade80;
+}
+.done-banner.show { display: block; }
+.done-banner strong { font-weight: 700; }
+
+/* ===== RESULT CARD ===== */
+.result-card {
+  display: none;
+  border-radius: 20px;
+  padding: 28px;
+  margin-bottom: 16px;
+  position: relative;
+  overflow: hidden;
+  animation: revealUp 0.5s cubic-bezier(0.34,1.2,0.64,1);
+}
+
+@keyframes revealUp {
+  from { opacity: 0; transform: translateY(20px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.result-card.show { display: block; }
+
+/* Rarity-specific styles */
+.result-card.common    { background: linear-gradient(135deg,#111118,#16161e); border: 1px solid rgba(136,136,170,0.3); }
+.result-card.uncommon  { background: linear-gradient(135deg,#0a1a0f,#111a14); border: 1px solid rgba(74,222,128,0.35); }
+.result-card.rare      { background: linear-gradient(135deg,#07101a,#0d1520); border: 1px solid rgba(56,189,248,0.35); }
+.result-card.epic      { background: linear-gradient(135deg,#130a1e,#1a1028); border: 1px solid rgba(192,132,252,0.4); }
+.result-card.legendary { background: linear-gradient(135deg,#1a0d05,#201510); border: 1px solid rgba(251,146,60,0.5); }
+
+.result-card.legendary::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 0%, rgba(251,146,60,0.15) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.rarity-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.rarity-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.rarity-tag.common    { background: rgba(136,136,170,0.15); color: var(--common); }
+.rarity-tag.uncommon  { background: rgba(74,222,128,0.12); color: var(--uncommon); }
+.rarity-tag.rare      { background: rgba(56,189,248,0.12); color: var(--rare); }
+.rarity-tag.epic      { background: rgba(192,132,252,0.12); color: var(--epic); }
+.rarity-tag.legendary { background: rgba(251,146,60,0.15); color: var(--legendary); }
+
+.overall-score {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 2.8rem;
+  line-height: 1;
+  letter-spacing: 0.04em;
+}
+.overall-score .denom { font-size: 1.2rem; color: var(--muted); }
+
+.score-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.score-cell {
+  background: rgba(255,255,255,0.04);
+  border-radius: 10px;
+  padding: 12px;
+  text-align: center;
+}
+.score-cell-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.score-cell-val {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.6rem;
+  letter-spacing: 0.04em;
+}
+
+.feedback-body {
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: var(--muted2);
+  margin-bottom: 20px;
+}
+
+/* XP gained */
+.xp-gained {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(245,230,66,0.1);
+  border: 1px solid rgba(245,230,66,0.2);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  color: var(--accent);
+  margin-bottom: 20px;
+}
+
+/* Share button */
+.share-btn {
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  padding: 12px;
+  color: var(--muted2);
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.share-btn:hover { border-color: rgba(245,230,66,0.3); color: var(--accent); }
+
+/* ===== DEVIL'S ADVOCATE ===== */
+.devils-section {
+  display: none;
+  margin-bottom: 16px;
+}
+.devils-section.show { display: block; }
+
+.devils-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.devils-icon {
+  width: 36px; height: 36px;
+  background: rgba(239,68,68,0.12);
+  border: 1px solid rgba(239,68,68,0.25);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.devils-title {
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-weight: 800;
+  font-size: 1rem;
+  color: #f87171;
+}
+.devils-sub { font-size: 0.8rem; color: var(--muted); margin-top: 1px; }
+
+.challenge-bubbles {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.challenge-bubble {
+  background: rgba(239,68,68,0.07);
+  border: 1px solid rgba(239,68,68,0.18);
+  border-radius: 12px 12px 12px 4px;
+  padding: 14px 16px;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--text);
+  animation: fadeSlide 0.4s ease both;
+}
+
+@keyframes fadeSlide {
+  from { opacity: 0; transform: translateX(-10px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.user-reply {
+  background: rgba(245,230,66,0.07);
+  border: 1px solid rgba(245,230,66,0.18);
+  border-radius: 12px 12px 4px 12px;
+  padding: 14px 16px;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--text);
+  margin-left: 20px;
+}
+
+.ai-comeback {
+  background: rgba(239,68,68,0.07);
+  border: 1px solid rgba(239,68,68,0.18);
+  border-radius: 12px 12px 12px 4px;
+  padding: 14px 16px;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.reply-input-wrap {
+  display: flex;
+  gap: 10px;
+}
+
+.reply-input {
+  flex: 1;
+  background: var(--card);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  padding: 10px 16px;
+  color: var(--text);
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.reply-input:focus { border-color: rgba(245,230,66,0.3); }
+.reply-input::placeholder { color: var(--muted); }
+
+.reply-btn {
+  background: rgba(239,68,68,0.15);
+  border: 1px solid rgba(239,68,68,0.3);
+  border-radius: 10px;
+  padding: 10px 18px;
+  color: #f87171;
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: all 0.18s;
+  white-space: nowrap;
+}
+.reply-btn:hover { background: rgba(239,68,68,0.25); }
+.reply-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.rounds-left {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-align: center;
+  margin-top: 8px;
+}
+
+/* ===== LOADING SPINNER ===== */
+.spinner {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+.spinner span {
+  width: 5px; height: 5px;
+  background: currentColor;
+  border-radius: 50%;
+  animation: spinBounce 1.2s infinite;
+}
+.spinner span:nth-child(2) { animation-delay: 0.2s; }
+.spinner span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes spinBounce {
+  0%,80%,100% { transform: scale(0.5); opacity: 0.3; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+/* ===== DIVIDER ===== */
+.divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 28px 0;
+}
+
+/* ===== BADGES ===== */
+.badges-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.badge-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 10px;
+  text-align: center;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+
+.badge-card.earned {
+  border-color: rgba(245,230,66,0.3);
+  background: rgba(245,230,66,0.05);
+}
+.badge-card.earned:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(245,230,66,0.1); }
+
+.badge-card.locked { opacity: 0.35; }
+
+.badge-emoji { font-size: 1.8rem; margin-bottom: 6px; }
+.badge-name {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  line-height: 1.3;
+}
+.badge-card.earned .badge-name { color: var(--accent); }
+
+.badge-req {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.58rem;
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+/* ===== IDEA LOG ===== */
+.idea-log { display: flex; flex-direction: column; gap: 10px; }
+
+.log-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 18px;
+  transition: border-color 0.2s;
+}
+.log-item:hover { border-color: var(--border2); }
+
+.log-cat-emoji { font-size: 1.3rem; flex-shrink: 0; margin-top: 2px; }
+
+.log-content { flex: 1; min-width: 0; }
+.log-text {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin-bottom: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.log-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.66rem;
+  color: var(--muted);
+}
+
+.log-rarity-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-common    { background: var(--common); }
+.dot-uncommon  { background: var(--uncommon); }
+.dot-rare      { background: var(--rare); }
+.dot-epic      { background: var(--epic); }
+.dot-legendary { background: var(--legendary); }
+
+.log-score {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.1rem;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 32px 0;
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+}
+
+/* ===== SHARE CARD MODAL ===== */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.85);
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  backdrop-filter: blur(8px);
+}
+.modal-overlay.show { display: flex; }
+
+.share-modal {
+  background: var(--card);
+  border: 1px solid var(--border2);
+  border-radius: 20px;
+  padding: 28px;
+  max-width: 420px;
+  width: 100%;
+  animation: modalIn 0.3s cubic-bezier(0.34,1.4,0.64,1);
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.share-card-preview {
+  border-radius: 14px;
+  padding: 28px;
+  margin-bottom: 20px;
+  position: relative;
+  overflow: hidden;
+  min-height: 200px;
+}
+
+.share-card-preview.common    { background: linear-gradient(135deg,#111118,#1e1e28); }
+.share-card-preview.uncommon  { background: linear-gradient(135deg,#061209,#0e1e12); }
+.share-card-preview.rare      { background: linear-gradient(135deg,#040c14,#081524); }
+.share-card-preview.epic      { background: linear-gradient(135deg,#0e0518,#180a26); }
+.share-card-preview.legendary { background: linear-gradient(135deg,#150803,#241005); }
+
+.share-card-logo {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 0.9rem;
+  letter-spacing: 0.15em;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+.share-card-logo em { color: var(--accent); font-style: normal; }
+
+.share-card-text {
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.4;
+  margin-bottom: 20px;
+}
+
+.share-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.share-card-score {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 2rem;
+  letter-spacing: 0.04em;
+}
+.share-card-score .denom { font-size: 1rem; opacity: 0.5; }
+
+.share-actions { display: flex; gap: 10px; }
+
+.share-action-btn {
+  flex: 1;
+  padding: 11px;
+  border-radius: 10px;
+  border: 1px solid var(--border2);
+  background: var(--surface);
+  color: var(--text);
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: all 0.18s;
+  text-align: center;
+}
+.share-action-btn:hover { border-color: rgba(245,230,66,0.3); color: var(--accent); }
+.share-action-btn.primary { background: var(--accent); color: #000; border-color: var(--accent); }
+.share-action-btn.primary:hover { box-shadow: 0 4px 16px rgba(245,230,66,0.25); }
+
+.modal-close {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: color 0.18s;
+}
+.modal-close:hover { color: var(--text); }
+
+/* ===== TOAST ===== */
+.toast {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: var(--text);
+  color: #000;
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-weight: 700;
+  padding: 11px 22px;
+  border-radius: 100px;
+  font-size: 0.88rem;
+  z-index: 200;
+  transition: transform 0.4s cubic-bezier(0.34,1.56,0.64,1);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+/* ===== RARITY SHIMMER for legendary ===== */
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+.legendary-shimmer {
+  background: linear-gradient(90deg, var(--legendary), #fde68a, var(--legendary), #f97316, var(--legendary));
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer 3s linear infinite;
+}
+
+/* ===== DEVELOP IT ===== */
+.develop-section {
+  display: none;
+  margin-bottom: 16px;
+  border: 1px solid rgba(52,211,153,0.2);
+  border-radius: 20px;
+  padding: 24px;
+  background: linear-gradient(135deg, #071a10, #0d1a14);
+}
+.develop-section.show { display: block; animation: revealUp 0.5s cubic-bezier(0.34,1.2,0.64,1); }
+
+.develop-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.develop-icon {
+  width: 36px; height: 36px;
+  background: rgba(52,211,153,0.1);
+  border: 1px solid rgba(52,211,153,0.25);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+
+.develop-title {
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-weight: 800;
+  font-size: 1rem;
+  color: #34d399;
+}
+.develop-sub { font-size: 0.8rem; color: var(--muted); margin-top: 1px; }
+
+.develop-progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.develop-progress-track {
+  flex: 1;
+  height: 3px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.develop-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #34d399, #059669);
+  border-radius: 10px;
+  transition: width 0.6s cubic-bezier(0.34,1.56,0.64,1);
+}
+.develop-progress-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.coach-bubbles {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.coach-q {
+  background: rgba(52,211,153,0.07);
+  border: 1px solid rgba(52,211,153,0.18);
+  border-radius: 12px 12px 12px 4px;
+  padding: 14px 16px;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--text);
+  animation: fadeSlide 0.35s ease both;
+}
+
+.coach-q-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #34d399;
+  margin-bottom: 6px;
+}
+
+.coach-help {
+  background: rgba(245,230,66,0.06);
+  border: 1px solid rgba(245,230,66,0.18);
+  border-radius: 12px 12px 12px 4px;
+  padding: 14px 16px;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: #d4c84a;
+  animation: fadeSlide 0.35s ease both;
+}
+
+.coach-help-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.dev-user-reply {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px 12px 4px 12px;
+  padding: 12px 16px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--muted2);
+  margin-left: 20px;
+  font-style: italic;
+}
+
+.develop-input-wrap {
+  margin-bottom: 10px;
+}
+
+.develop-textarea {
+  width: 100%;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(52,211,153,0.2);
+  border-radius: 12px;
+  padding: 12px 16px;
+  color: var(--text);
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  resize: none;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.develop-textarea:focus { border-color: rgba(52,211,153,0.45); }
+.develop-textarea::placeholder { color: var(--muted); }
+
+.develop-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.help-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(245,230,66,0.08);
+  border: 1px solid rgba(245,230,66,0.2);
+  border-radius: 10px;
+  padding: 9px 16px;
+  color: var(--accent);
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.help-btn:hover { background: rgba(245,230,66,0.14); }
+.help-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.develop-next-btn {
+  background: #34d399;
+  color: #000;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 24px;
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-weight: 800;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.develop-next-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(52,211,153,0.25); }
+.develop-next-btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* Idea Brief */
+.idea-brief {
+  display: none;
+  margin-top: 20px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(52,211,153,0.25);
+  border-radius: 14px;
+  padding: 22px;
+  animation: revealUp 0.4s ease;
+}
+.idea-brief.show { display: block; }
+
+.brief-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: #34d399;
+  margin-bottom: 16px;
+}
+
+.brief-content {
+  font-size: 0.92rem;
+  line-height: 1.75;
+  color: var(--muted2);
+}
+
+.brief-content strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.brief-section {
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.brief-section:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+
+.brief-section-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #34d399;
+  margin-bottom: 5px;
+}
+
+.brief-section-text {
+  font-size: 0.92rem;
+  line-height: 1.6;
+  color: var(--muted2);
+}
+
+.copy-brief-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 18px;
+  background: transparent;
+  border: 1px solid rgba(52,211,153,0.25);
+  border-radius: 8px;
+  padding: 9px 18px;
+  color: #34d399;
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.copy-brief-btn:hover { background: rgba(52,211,153,0.08); }
+
+/* Sort controls */
+.sort-controls { display: flex; gap: 6px; }
+.sort-btn {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.18s;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.sort-btn:hover { border-color: var(--border2); color: var(--text); }
+.sort-btn.active { background: rgba(245,230,66,0.08); border-color: rgba(245,230,66,0.3); color: var(--accent); }
+
+/* Log item clickable */
+.log-item { cursor: pointer; }
+.log-item:hover { border-color: rgba(245,230,66,0.2); }
+.log-has-brief .log-text::after {
+  content: ' · Brief';
+  color: #34d399;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+
+/* Idea detail modal */
+.idea-modal {
+  background: var(--card);
+  border: 1px solid var(--border2);
+  border-radius: 20px;
+  padding: 28px;
+  max-width: 560px;
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  animation: modalIn 0.3s cubic-bezier(0.34,1.4,0.64,1);
+}
+
+.idea-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.idea-modal-cat {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+.idea-modal-score {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 2.4rem;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.idea-modal-text {
+  font-size: 1rem;
+  line-height: 1.65;
+  color: var(--text);
+  font-weight: 500;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.idea-modal-scores {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.idea-modal-feedback {
+  font-size: 0.9rem;
+  line-height: 1.65;
+  color: var(--muted2);
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.idea-modal-brief {
+  display: none;
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+.idea-modal-brief.show { display: block; }
+
+.idea-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.idea-modal-dev-btn {
+  background: rgba(52,211,153,0.1);
+  border: 1px solid rgba(52,211,153,0.25);
+  border-radius: 10px;
+  padding: 10px 20px;
+  color: #34d399;
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.idea-modal-dev-btn:hover { background: rgba(52,211,153,0.18); }
+
+/* Lucide icon utility */
+.icon { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.icon svg { display: block; }
+.badge-icon { margin-bottom: 8px; display: flex; justify-content: center; }
+.log-cat-icon { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; background: rgba(255,255,255,0.05); flex-shrink: 0; margin-top: 2px; }
+.cat-btn { display: inline-flex; align-items: center; gap: 6px; }
+.cat-btn svg { flex-shrink: 0; }
+
+/* ===== ONBOARDING / AUTH SCREEN ===== */
+#authScreen {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: var(--bg);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.onboard-wrap {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 48px 24px 80px;
+  width: 100%;
+}
+
+.onboard-logo {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.4rem;
+  letter-spacing: 0.12em;
+  margin-bottom: 56px;
+  color: var(--text);
+}
+.onboard-logo em { color: var(--accent); font-style: normal; }
+
+.onboard-slide {
+  display: none;
+  animation: revealUp 0.45s cubic-bezier(0.34,1.2,0.64,1);
+}
+.onboard-slide.active { display: block; }
+
+.onboard-kicker {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.onboard-headline {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(2.8rem, 10vw, 5rem);
+  line-height: 0.92;
+  letter-spacing: 0.01em;
+  margin-bottom: 24px;
+  background: linear-gradient(135deg, #f2f2ff 0%, #8888bb 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.onboard-headline em {
+  background: linear-gradient(135deg, var(--accent), #ff9500);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-style: normal;
+}
+
+.onboard-body {
+  font-size: 1.05rem;
+  line-height: 1.75;
+  color: var(--muted2);
+  margin-bottom: 32px;
+}
+
+.onboard-body strong { color: var(--text); font-weight: 700; }
+
+.onboard-stat {
+  background: var(--card);
+  border: 1px solid var(--border2);
+  border-radius: 14px;
+  padding: 20px 22px;
+  margin-bottom: 24px;
+}
+
+.onboard-stat-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.onboard-stat-text {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--muted2);
+}
+.onboard-stat-text strong { color: var(--text); }
+
+.onboard-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+}
+
+.onboard-dots {
+  display: flex;
+  gap: 6px;
+}
+.onboard-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--border2);
+  transition: all 0.2s;
+}
+.onboard-dot.active { background: var(--accent); width: 18px; border-radius: 3px; }
+
+.onboard-next-btn {
+  background: var(--accent);
+  color: #000;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 28px;
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-weight: 800;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.onboard-next-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(245,230,66,0.25); }
+
+.onboard-skip {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-size: 0.88rem;
+  cursor: pointer;
+  padding: 12px 0;
+  transition: color 0.18s;
+}
+.onboard-skip:hover { color: var(--text); }
+
+/* Login slide */
+.login-card {
+  background: var(--card);
+  border: 1px solid var(--border2);
+  border-radius: 20px;
+  padding: 36px;
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.login-card-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 2rem;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+.login-card-sub {
+  color: var(--muted2);
+  font-size: 0.9rem;
+  margin-bottom: 28px;
+  line-height: 1.5;
+}
+
+.google-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  background: #fff;
+  color: #1a1a1a;
+  border: none;
+  border-radius: 12px;
+  padding: 14px 24px;
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: 12px;
+}
+.google-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(255,255,255,0.15); }
+
+.google-btn svg { flex-shrink: 0; }
+
+.login-skip {
+  background: transparent;
+  border: 1px solid var(--border2);
+  border-radius: 12px;
+  padding: 12px 24px;
+  color: var(--muted);
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-size: 0.88rem;
+  cursor: pointer;
+  width: 100%;
+  transition: all 0.18s;
+}
+.login-skip:hover { border-color: var(--border2); color: var(--text); }
+
+.login-note {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--muted);
+  text-align: center;
+  margin-top: 16px;
+  line-height: 1.5;
+}
+
+/* User avatar in nav */
+.user-avatar {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--border2);
+  cursor: pointer;
+  transition: border-color 0.18s;
+  object-fit: cover;
+}
+.user-avatar:hover { border-color: rgba(245,230,66,0.4); }
+
+.sign-out-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 5px 12px;
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.sign-out-btn:hover { border-color: var(--border2); color: var(--text); }
+
+/* Responsive */
+@media(max-width:480px) {
+  .badges-grid { grid-template-columns: repeat(3,1fr); }
+  .score-grid { grid-template-columns: repeat(3,1fr); }
+  .nav-right { gap: 8px; }
+  .xp-badge { display: none; }
+}
+</style>
+</head>
+<body>
+<!-- ===== ONBOARDING / AUTH SCREEN ===== -->
+<div id="authScreen">
+  <div class="onboard-wrap">
+    <div class="onboard-logo">IDEA<em>DAILY</em></div>
+
+    <!-- Slide 1: The Hook -->
+    <div class="onboard-slide active" id="slide0">
+      <div class="onboard-kicker"><div class="pulse-dot"></div> The Science of Creativity</div>
+      <div class="onboard-headline">Most people die with their <em>best ideas</em> still inside them.</div>
+      <div class="onboard-body">Not because they weren't creative. Because they never trained.<br><br>Creativity isn't a gift. <strong>It's a muscle.</strong> And like any muscle, it atrophies without use — and grows stronger with daily reps.</div>
+      <div class="onboard-nav">
+        <div class="onboard-dots">
+          <div class="onboard-dot active"></div>
+          <div class="onboard-dot"></div>
+          <div class="onboard-dot"></div>
+          <div class="onboard-dot"></div>
+        </div>
+        <button class="onboard-next-btn" onclick="nextSlide()">Next →</button>
+      </div>
+    </div>
+
+    <!-- Slide 2: Pottery Study -->
+    <div class="onboard-slide" id="slide1">
+      <div class="onboard-kicker">The Research</div>
+      <div class="onboard-headline">Quantity <em>beats</em> quality. Every time.</div>
+      <div class="onboard-stat">
+        <div class="onboard-stat-label">The Pottery Class Study — Bayles & Orland, 1993</div>
+        <div class="onboard-stat-text">A ceramics teacher split his class in two. Half were graded on <strong>quantity</strong> — as many pots as possible. Half on <strong>quality</strong> — one perfect pot. At the end of semester, <strong>every single best pot came from the quantity group.</strong> They'd learned by doing.</div>
+      </div>
+      <div class="onboard-stat">
+        <div class="onboard-stat-label">Jerry Seinfeld's Chain Method</div>
+        <div class="onboard-stat-text">Seinfeld wrote a joke <strong>every single day</strong> and marked an X on a calendar. His only rule: <strong>don't break the chain.</strong> He didn't aim for a great joke. Just a joke. Quality emerged from consistency.</div>
+      </div>
+      <div class="onboard-nav">
+        <div class="onboard-dots">
+          <div class="onboard-dot"></div>
+          <div class="onboard-dot active"></div>
+          <div class="onboard-dot"></div>
+          <div class="onboard-dot"></div>
+        </div>
+        <button class="onboard-next-btn" onclick="nextSlide()">Next →</button>
+      </div>
+    </div>
+
+    <!-- Slide 3: More Research -->
+    <div class="onboard-slide" id="slide2">
+      <div class="onboard-kicker">More Evidence</div>
+      <div class="onboard-headline">Edison ran <em>idea quotas.</em> So should you.</div>
+      <div class="onboard-stat">
+        <div class="onboard-stat-label">Thomas Edison</div>
+        <div class="onboard-stat-text">Edison held <strong>over 1,000 patents</strong> and set idea quotas for himself and his team. He believed creativity was a pure numbers game — the more ideas you generate, the better your odds of a great one.</div>
+      </div>
+      <div class="onboard-stat">
+        <div class="onboard-stat-label">James Webb Young — A Technique for Producing Ideas, 1940</div>
+        <div class="onboard-stat-text">Ideas are just <strong>new combinations of existing concepts.</strong> The more raw material you feed your brain daily, the better your combinations become. Volume is the engine of insight.</div>
+      </div>
+      <div class="onboard-nav">
+        <div class="onboard-dots">
+          <div class="onboard-dot"></div>
+          <div class="onboard-dot"></div>
+          <div class="onboard-dot active"></div>
+          <div class="onboard-dot"></div>
+        </div>
+        <button class="onboard-next-btn" onclick="nextSlide()">I'm in →</button>
+      </div>
+    </div>
+
+    <!-- Slide 4: Login -->
+    <div class="onboard-slide" id="slide3">
+      <div class="onboard-kicker">Start Your Streak</div>
+      <div class="onboard-headline">One idea. <em>Every day.</em> Starting now.</div>
+      <div class="login-card">
+        <div class="login-card-title">Create your account</div>
+        <div class="login-card-sub">Sign in to save your streak, ideas, and briefs across every device.</div>
+        <button class="google-btn" onclick="handleGoogleSignIn()">
+          <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+          Continue with Google
+        </button>
+        <button class="login-skip" onclick="skipLogin()">Continue without account</button>
+        <div class="login-note">Your data saves locally without an account.<br>Sign in to sync across devices and never lose your streak.</div>
+      </div>
+      <div class="onboard-nav" style="justify-content:flex-start;gap:12px">
+        <div class="onboard-dots">
+          <div class="onboard-dot"></div>
+          <div class="onboard-dot"></div>
+          <div class="onboard-dot"></div>
+          <div class="onboard-dot active"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="ambient ambient-1"></div>
+<div class="ambient ambient-2"></div>
+
+<div class="app">
+
+  <!-- Nav -->
+  <nav class="nav">
+    <div class="logo">IDEA<em>DAILY</em></div>
+    <div class="nav-right">
+      <div class="xp-badge"><span class="icon"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> <span id="xpDisplay">0</span> XP</div>
+      <div class="streak-badge">
+        <span class="icon fire"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></span>
+        <span class="num" id="streakNum">0</span>
+        <span style="color:var(--muted);font-size:0.75rem">day streak</span>
+      </div>
+      <div id="userNavArea"></div>
+    </div>
+  </nav>
+
+  <!-- XP Bar -->
+  <div class="xp-bar-wrap">
+    <div class="xp-level-label">LVL <span id="levelNum">1</span></div>
+    <div class="xp-track"><div class="xp-fill" id="xpFill" style="width:0%"></div></div>
+    <div class="xp-next" id="xpNext">0 / 100 XP</div>
+  </div>
+
+  <!-- Challenge Hero -->
+  <div class="challenge-hero">
+    <div class="challenge-eyebrow"><div class="pulse-dot"></div> Daily Challenge — <span id="todayDate"></span></div>
+    <div class="challenge-headline">One Idea.<br>Any Idea.<br>Just Create.</div>
+    <div class="challenge-sub">The world's most successful people are prolific idea generators. Pick a category, flex that creative muscle, and get rated by AI. The habit is the point.</div>
+  </div>
+
+  <!-- Category Picker -->
+  <div class="section-eyebrow">Choose your category</div>
+  <div class="categories">
+    <button class="cat-btn active" data-cat="Business" onclick="selectCat(this)"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg> Business</button>
+    <button class="cat-btn" data-cat="App" onclick="selectCat(this)"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg> App</button>
+    <button class="cat-btn" data-cat="Song" onclick="selectCat(this)"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> Song</button>
+    <button class="cat-btn" data-cat="Content" onclick="selectCat(this)"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> Content</button>
+    <button class="cat-btn" data-cat="Creative" onclick="selectCat(this)"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg> Creative</button>
+    <button class="cat-btn" data-cat="Social Good" onclick="selectCat(this)"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> Social Good</button>
+    <button class="cat-btn" data-cat="Game" onclick="selectCat(this)"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg> Game</button>
+    <button class="cat-btn" data-cat="Wild Card" onclick="selectCat(this)"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c-1 3-2.5 5-5 6 2.5 1 4 3 5 6 1-3 2.5-5 5-6-2.5-1-4-3-5-6z"/><path d="M5 9c-.5 1.5-1.5 2.5-3 3 1.5.5 2.5 1.5 3 3"/><path d="M19 9c.5 1.5 1.5 2.5 3 3-1.5.5-2.5 1.5-3 3"/></svg> Wild Card</button>
+  </div>
+
+  <!-- Done banner -->
+  <div class="done-banner" id="doneBanner">
+    <strong>You've ideated today.</strong> Come back tomorrow to keep your streak alive. Your idea is in the log below.
+  </div>
+
+  <!-- Input -->
+  <div class="input-wrap" id="inputWrap">
+    <textarea class="idea-textarea" id="ideaInput" placeholder="Describe your idea... be bold, be weird, be specific. Quality beats quantity." maxlength="600" oninput="updateChar()"></textarea>
+    <div class="input-footer">
+      <span class="char-count"><span id="charNum">0</span>/600</span>
+      <button class="submit-btn" id="submitBtn" onclick="submitIdea()">Submit Idea →</button>
+    </div>
+  </div>
+
+  <!-- Result Card -->
+  <div class="result-card" id="resultCard">
+    <div class="rarity-header">
+      <div>
+        <div class="rarity-tag" id="rarityTag"></div>
+        <div style="margin-top:10px">
+          <div class="xp-gained" id="xpGained"></div>
+        </div>
+      </div>
+      <div>
+        <div class="overall-score" id="overallScore" style="text-align:right"></div>
+      </div>
+    </div>
+    <div class="score-grid">
+      <div class="score-cell">
+        <div class="score-cell-label">Originality</div>
+        <div class="score-cell-val" id="scoreOrig">—</div>
+      </div>
+      <div class="score-cell">
+        <div class="score-cell-label">Viability</div>
+        <div class="score-cell-val" id="scoreViab">—</div>
+      </div>
+      <div class="score-cell">
+        <div class="score-cell-label">Clarity</div>
+        <div class="score-cell-val" id="scoreClarity">—</div>
+      </div>
+    </div>
+    <div class="feedback-body" id="feedbackBody"></div>
+    <button class="share-btn" onclick="openShareModal()">
+      <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> Share your idea card
+    </button>
+    <button class="share-btn" style="margin-top:8px;border-color:rgba(52,211,153,0.25);color:#34d399" onclick="startDevelop()">
+      <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Develop this idea →
+    </button>
+  </div>
+
+  <!-- Devil's Advocate -->
+  <div class="devils-section" id="devilsSection">
+    <div class="devils-header">
+      <div class="devils-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" y1="19" x2="19" y2="13"/><line x1="16" y1="16" x2="20" y2="20"/><line x1="19" y1="21" x2="21" y2="19"/><polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5"/><line x1="5" y1="11" x2="11" y2="5"/><line x1="4" y1="16" x2="8" y2="12"/></svg></div>
+      <div>
+        <div class="devils-title">Devil's Advocate</div>
+        <div class="devils-sub">The AI is going to challenge your idea. Defend it.</div>
+      </div>
+    </div>
+    <div class="challenge-bubbles" id="challengeBubbles"></div>
+    <div id="replyArea">
+      <div class="reply-input-wrap">
+        <input class="reply-input" id="replyInput" placeholder="Defend your idea..." maxlength="300" onkeydown="if(event.key==='Enter')fireReply()"/>
+        <button class="reply-btn" id="replyBtn" onclick="fireReply()">Fire Back →</button>
+      </div>
+      <div class="rounds-left" id="roundsLeft"></div>
+    </div>
+  </div>
+
+  <!-- ===== DEVELOP IT ===== -->
+  <div class="develop-section" id="developSection">
+    <div class="develop-header">
+      <div class="develop-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      </div>
+      <div>
+        <div class="develop-title">Develop It</div>
+        <div class="develop-sub">Answer 5 coaching questions to build your Idea Brief. Stuck? Hit "Help me think".</div>
+      </div>
+    </div>
+
+    <!-- Progress bar -->
+    <div class="develop-progress-wrap">
+      <div class="develop-progress-track">
+        <div class="develop-progress-fill" id="developProgressFill" style="width:0%"></div>
+      </div>
+      <div class="develop-progress-label" id="developProgressLabel">Step 1 of 5</div>
+    </div>
+
+    <!-- Coach conversation -->
+    <div class="coach-bubbles" id="coachBubbles"></div>
+
+    <!-- Answer area -->
+    <div id="developAnswerArea">
+      <div class="develop-input-wrap">
+        <textarea class="develop-textarea" id="developInput" placeholder="Your answer..." maxlength="400" rows="3" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitDevAnswer();}"></textarea>
+      </div>
+      <div class="develop-actions">
+        <button class="help-btn" id="helpBtn" onclick="askForHelp()">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          Help me think
+        </button>
+        <button class="develop-next-btn" id="developNextBtn" onclick="submitDevAnswer()">Next →</button>
+      </div>
+    </div>
+
+    <!-- Idea Brief output -->
+    <div class="idea-brief" id="ideaBrief">
+      <div class="brief-eyebrow">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Idea Brief Generated
+      </div>
+      <div class="brief-content" id="briefContent"></div>
+      <button class="copy-brief-btn" onclick="copyBrief()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        Copy Brief
+      </button>
+    </div>
+  </div>
+
+  <!-- Badges -->
+  <div class="section-eyebrow" style="margin-bottom:12px">Badges</div>
+  <div class="badges-grid" id="badgesGrid"></div>
+
+  <hr class="divider">
+
+  <!-- Idea Log -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div class="section-eyebrow" style="margin-bottom:0">Idea Log</div>
+    <div class="sort-controls">
+      <button class="sort-btn active" data-sort="date" onclick="setSort(this)">Recent</button>
+      <button class="sort-btn" data-sort="score" onclick="setSort(this)">Top Rated</button>
+      <button class="sort-btn" data-sort="rarity" onclick="setSort(this)">Rarity</button>
+    </div>
+  </div>
+  <div class="idea-log" id="ideaLog"></div>
+
+</div>
+
+<!-- Idea Detail Modal -->
+<div class="modal-overlay" id="ideaModal" onclick="closeIdeaModalOutside(event)">
+  <div class="idea-modal">
+    <div class="idea-modal-header">
+      <div>
+        <div class="rarity-tag" id="modalRarityTag"></div>
+        <div class="idea-modal-cat" id="modalCat"></div>
+      </div>
+      <div class="idea-modal-score" id="modalScore"></div>
+    </div>
+    <div class="idea-modal-text" id="modalText"></div>
+    <div class="idea-modal-scores" id="modalScores"></div>
+    <div class="idea-modal-feedback" id="modalFeedback"></div>
+
+    <!-- Brief section if developed -->
+    <div class="idea-modal-brief" id="modalBrief">
+      <div class="brief-eyebrow" style="margin-bottom:14px">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Idea Brief
+      </div>
+      <div class="brief-content" id="modalBriefContent"></div>
+    </div>
+
+    <div class="idea-modal-actions">
+      <button class="idea-modal-dev-btn" id="modalDevBtn" onclick="reopenDevelop()">Develop this idea →</button>
+      <button class="modal-close" style="margin-top:0;flex:0" onclick="closeIdeaModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Share Modal -->
+<div class="modal-overlay" id="shareModal" onclick="closeModalOutside(event)">
+  <div class="share-modal">
+    <div class="share-card-preview" id="shareCardPreview">
+      <div class="share-card-logo">IDEA<em>DAILY</em></div>
+      <div class="share-card-text" id="shareCardText"></div>
+      <div class="share-card-footer">
+        <div>
+          <div class="rarity-tag" id="shareRarityTag" style="margin-bottom:6px"></div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--muted)" id="shareCat"></div>
+        </div>
+        <div class="share-card-score" id="shareScore"></div>
+      </div>
+    </div>
+    <div class="share-actions">
+      <button class="share-action-btn" onclick="copyShareText()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:middle;margin-right:4px"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy Text</button>
+      <button class="share-action-btn primary" onclick="closeModal()">Done</button>
+    </div>
+    <button class="modal-close" onclick="closeModal()">Close</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ======= STATE =======
+const LEVELS = [0,100,250,500,900,1500,2400,3800,6000,9500,15000];
+const BADGES = [
+  { id:'spark',    icon:'sprout',        name:'First Spark',    req:1,   type:'streak',   desc:'1 day streak' },
+  { id:'fire3',    icon:'flame',         name:'On Fire',        req:3,   type:'streak',   desc:'3 day streak' },
+  { id:'week',     icon:'trophy',        name:'Week Warrior',   req:7,   type:'streak',   desc:'7 day streak' },
+  { id:'fortnight',icon:'zap',           name:'14 Days',        req:14,  type:'streak',   desc:'14 day streak' },
+  { id:'month',    icon:'rocket',        name:'Month Legend',   req:30,  type:'streak',   desc:'30 day streak' },
+  { id:'ideas10',  icon:'lightbulb',     name:'10 Ideas',       req:10,  type:'count',    desc:'10 ideas total' },
+  { id:'ideas50',  icon:'gem',           name:'50 Ideas',       req:50,  type:'count',    desc:'50 ideas total' },
+  { id:'legendary',icon:'crown',         name:'Legend',         req:1,   type:'legendary',desc:'Get a Legendary idea' },
+  { id:'allcat',   icon:'layers',        name:'All Categories', req:8,   type:'allcat',   desc:'All 8 categories' },
+  { id:'epic3',    icon:'star',          name:'Epic x3',        req:3,   type:'epic3',    desc:'3 Epic+ ideas' },
+  { id:'defender', icon:'shield',        name:'Idea Defender',  req:3,   type:'debates',  desc:'Win 3 debates' },
+  { id:'centum',   icon:'award',         name:'100 Club',       req:100, type:'count',    desc:'100 ideas total' },
+];
+
+const SVG_ICONS = {
+  sprout:     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20h10"/><path d="M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"/><path d="M14.1 6a7 7 0 0 1 1.9 4c-1.8.8-3.1.5-4.7.1-.5-1.7-.3-3.5.6-5 2.3-.5 3.6.2 4.2.9z"/></svg>`,
+  flame:      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>`,
+  trophy:     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg>`,
+  zap:        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
+  rocket:     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>`,
+  lightbulb:  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="18" x2="15" y2="18"/><line x1="10" y1="22" x2="14" y2="22"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>`,
+  gem:        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 18 3 22 9 12 22 2 9"/><polyline points="22 9 12 9 6 3"/><line x1="12" y1="9" x2="12" y2="22"/><line x1="2" y1="9" x2="22" y2="9"/></svg>`,
+  crown:      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.892 9.03a1 1 0 0 1-.956.701H5.867a1 1 0 0 1-.956-.702L2.02 6.019a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z"/><path d="M5 21h14"/></svg>`,
+  layers:     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
+  star:       `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+  shield:     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+  award:      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>`,
+  briefcase:  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>`,
+  smartphone: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>`,
+  music:      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
+  video:      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>`,
+  'pen-tool': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>`,
+  globe:      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
+  gamepad:    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>`,
+  sparkles:   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c-1 3-2.5 5-5 6 2.5 1 4 3 5 6 1-3 2.5-5 5-6-2.5-1-4-3-5-6z"/><path d="M5 9c-.5 1.5-1.5 2.5-3 3 1.5.5 2.5 1.5 3 3"/><path d="M19 9c.5 1.5 1.5 2.5 3 3-1.5.5-2.5 1.5-3 3"/></svg>`,
+};
+
+function svgIcon(name, size) {
+  if (!SVG_ICONS[name]) return '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${SVG_ICONS[name].replace(/^<svg[^>]*>/,'').replace('</svg>','')}</svg>`;
+}
+
+const RARITY_THRESHOLDS = [
+  { name:'legendary', min:9,   label:'⭐ LEGENDARY', color:'var(--legendary)' },
+  { name:'epic',      min:7.5, label:'◆ EPIC',       color:'var(--epic)' },
+  { name:'rare',      min:6,   label:'◈ RARE',       color:'var(--rare)' },
+  { name:'uncommon',  min:4.5, label:'◇ UNCOMMON',   color:'var(--uncommon)' },
+  { name:'common',    min:0,   label:'○ COMMON',     color:'var(--common)' },
+];
+
+const XP_MAP = { common:10, uncommon:25, rare:50, epic:100, legendary:200 };
+
+let state = loadState();
+let currentIdea = null;
+let currentRarity = null;
+let debateRound = 0;
+let maxRounds = 3;
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem('idaily_v2');
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return { streak:0, longestStreak:0, lastDate:null, xp:0, ideas:[], debates:0, earnedBadges:[] };
+}
+
+function saveState() {
+  try { localStorage.setItem('idaily_v2', JSON.stringify(state)); } catch(e) {}
+  // Sync to Firestore if logged in
+  if (window._saveToFirestore) window._saveToFirestore(state);
+}
+
+function todayStr() { return new Date().toISOString().slice(0,10); }
+
+function hasToday() {
+  return state.ideas.length > 0 && state.ideas[0].date === todayStr();
+}
+
+function getRarity(score) {
+  for (const r of RARITY_THRESHOLDS) {
+    if (score >= r.min) return r;
+  }
+  return RARITY_THRESHOLDS[4];
+}
+
+function getLevel(xp) {
+  for (let i = LEVELS.length-1; i >= 0; i--) {
+    if (xp >= LEVELS[i]) return i+1;
+  }
+  return 1;
+}
+
+function getLevelProgress(xp) {
+  const lvl = getLevel(xp);
+  const idx = lvl - 1;
+  const curr = LEVELS[Math.min(idx, LEVELS.length-1)] || 0;
+  const next = LEVELS[Math.min(idx+1, LEVELS.length-1)] || curr+1000;
+  return { pct: Math.min(100, ((xp-curr)/(next-curr))*100), curr: xp-curr, needed: next-curr };
+}
+
+let selectedCat = 'Business';
+function selectCat(btn) {
+  document.querySelectorAll('.cat-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  selectedCat = btn.dataset.cat;
+}
+
+function updateChar() {
+  document.getElementById('charNum').textContent = document.getElementById('ideaInput').value.length;
+}
+
+// ======= SUBMIT =======
+async function submitIdea() {
+  const text = document.getElementById('ideaInput').value.trim();
+  if (text.length < 15) { toast('Write a bit more about your idea!'); return; }
+  if (hasToday()) { toast('Already ideated today — come back tomorrow! 🔥'); return; }
+
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"><span></span><span></span><span></span></span> Analysing...';
+
+  let feedback = null;
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:1000,
+        system:`You are a sharp, honest creativity coach. Evaluate the idea and return ONLY valid JSON (no markdown, no backticks):
+{
+  "overall": <float 1-10, one decimal>,
+  "originality": <float 1-10>,
+  "viability": <float 1-10>,
+  "clarity": <float 1-10>,
+  "feedback": "<2-3 sentences: honest, specific, encouraging, reference the idea, end with one next step>",
+  "challenge1": "<First sharp devil's advocate question about this specific idea>",
+  "challenge2": "<Second sharp devil's advocate question about this specific idea>",
+  "challenge3": "<Third sharp devil's advocate question about this specific idea>"
+}`,
+        messages:[{role:'user', content:`Category: ${selectedCat}\nIdea: ${text}`}]
+      })
+    });
+    const data = await resp.json();
+    const raw = data.content.map(i=>i.text||'').join('');
+    feedback = JSON.parse(raw.replace(/```json|```/g,'').trim());
+  } catch(e) {
+    feedback = {
+      overall:6.5, originality:6.5, viability:6.5, clarity:6.5,
+      feedback:"Great effort showing up and creating today! Keep developing this concept — the habit of generating ideas is what separates creators from consumers.",
+      challenge1:"Who exactly is your target user and why would they choose this over existing alternatives?",
+      challenge2:"What's the single biggest assumption your idea makes that might be wrong?",
+      challenge3:"How would you get your first 100 users with no marketing budget?"
+    };
+  }
+
+  // Rarity + XP
+  const rarity = getRarity(feedback.overall);
+  const xpGained = XP_MAP[rarity.name];
+  currentIdea = { date:todayStr(), cat:selectedCat, text, score:feedback.overall, rarity:rarity.name,
+    originality:feedback.originality, viability:feedback.viability, clarity:feedback.clarity,
+    feedback:feedback.feedback };
+  currentRarity = rarity;
+
+  // Update streak
+  const today = todayStr();
+  const yesterday = new Date(Date.now()-86400000).toISOString().slice(0,10);
+  if (state.lastDate === yesterday) state.streak++;
+  else if (state.lastDate !== today) state.streak = 1;
+  if (state.streak > state.longestStreak) state.longestStreak = state.streak;
+  state.lastDate = today;
+  state.xp += xpGained;
+  state.ideas.unshift(currentIdea);
+  saveState();
+
+  // Render result
+  showResult(feedback, rarity, xpGained);
+
+  // Show devil's advocate
+  showDevils(feedback);
+
+  // Hide input
+  document.getElementById('inputWrap').style.display = 'none';
+  document.getElementById('doneBanner').classList.add('show');
+
+  checkBadges();
+  render();
+
+  const toastMsg = rarity.name === 'legendary' ? 'LEGENDARY IDEA — you absolute genius.' :
+                   rarity.name === 'epic'       ? 'Epic idea! Seriously impressive.' :
+                   rarity.name === 'rare'       ? 'Rare idea — above average.' :
+                   `Streak: ${state.streak} days`;
+  toast(toastMsg);
+}
+
+function showResult(fb, rarity, xp) {
+  const card = document.getElementById('resultCard');
+  card.className = 'result-card show ' + rarity.name;
+
+  const tag = document.getElementById('rarityTag');
+  tag.className = 'rarity-tag ' + rarity.name;
+  tag.textContent = rarity.label;
+
+  const scoreEl = document.getElementById('overallScore');
+  if (rarity.name === 'legendary') {
+    scoreEl.innerHTML = `<span class="legendary-shimmer">${fb.overall.toFixed(1)}</span><span class="denom">/10</span>`;
+  } else {
+    scoreEl.innerHTML = `${fb.overall.toFixed(1)}<span class="denom">/10</span>`;
+    scoreEl.style.color = rarity.color;
+  }
+
+  document.getElementById('scoreOrig').textContent = fb.originality.toFixed(1);
+  document.getElementById('scoreViab').textContent = fb.viability.toFixed(1);
+  document.getElementById('scoreClarity').textContent = fb.clarity.toFixed(1);
+  document.getElementById('feedbackBody').textContent = fb.feedback;
+  document.getElementById('xpGained').innerHTML = `+${xp} XP earned · ${rarity.label}`;
+}
+
+function showDevils(fb) {
+  const section = document.getElementById('devilsSection');
+  section.classList.add('show');
+  const bubbles = document.getElementById('challengeBubbles');
+  bubbles.innerHTML = '';
+  debateRound = 0;
+
+  // Show first question
+  const q1 = document.createElement('div');
+  q1.className = 'challenge-bubble';
+  q1.textContent = fb.challenge1;
+  bubbles.appendChild(q1);
+
+  window._devilQuestions = [fb.challenge1, fb.challenge2, fb.challenge3];
+  window._devilReplies = [];
+  maxRounds = 3;
+  updateRoundsLeft();
+}
+
+function updateRoundsLeft() {
+  const el = document.getElementById('roundsLeft');
+  const rem = maxRounds - debateRound;
+  if (rem <= 0) {
+    el.textContent = '';
+    document.getElementById('replyArea').style.display = 'none';
+  } else {
+    el.textContent = `${rem} round${rem!==1?'s':''} remaining`;
+  }
+}
+
+async function fireReply() {
+  if (debateRound >= maxRounds) return;
+  const input = document.getElementById('replyInput');
+  const reply = input.value.trim();
+  if (!reply) return;
+
+  const btn = document.getElementById('replyBtn');
+  btn.disabled = true;
+  input.disabled = true;
+  btn.innerHTML = '<span class="spinner"><span></span><span></span><span></span></span>';
+
+  const bubbles = document.getElementById('challengeBubbles');
+
+  // Add user reply bubble
+  const userBubble = document.createElement('div');
+  userBubble.className = 'user-reply';
+  userBubble.textContent = reply;
+  bubbles.appendChild(userBubble);
+  window._devilReplies.push(reply);
+  debateRound++;
+
+  input.value = '';
+
+  if (debateRound >= maxRounds) {
+    // Final round — give verdict
+    try {
+      const history = window._devilQuestions.slice(0, debateRound).map((q,i) => ({q, a: window._devilReplies[i]||''}));
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          model:'claude-sonnet-4-20250514',
+          max_tokens:300,
+          system:`You are a devil's advocate who has been challenging a user's idea. Give a final verdict in 2 sentences. Be honest but fair — acknowledge the strongest parts of their defence and the remaining weaknesses. Start with "Verdict:". Return plain text only.`,
+          messages:[{role:'user', content:`Original idea: ${currentIdea.text}\n\nDebate:\n${history.map(h=>`Q: ${h.q}\nA: ${h.a}`).join('\n\n')}`}]
+        })
+      });
+      const data = await resp.json();
+      const verdict = data.content.map(i=>i.text||'').join('').trim();
+
+      const vBubble = document.createElement('div');
+      vBubble.className = 'ai-comeback';
+      vBubble.innerHTML = `<strong style="color:#f87171">Final Verdict:</strong> ${verdict.replace('Verdict:','').trim()}`;
+      bubbles.appendChild(vBubble);
+
+      // Award debates stat
+      state.debates = (state.debates||0) + 1;
+      saveState();
+      checkBadges();
+    } catch(e) {
+      const vBubble = document.createElement('div');
+      vBubble.className = 'ai-comeback';
+      vBubble.textContent = 'Verdict: You made some solid points defending your idea. The core concept has merit — now go build a prototype!';
+      bubbles.appendChild(vBubble);
+    }
+
+    updateRoundsLeft();
+  } else {
+    // Continue with next question
+    try {
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          model:'claude-sonnet-4-20250514',
+          max_tokens:200,
+          system:`You are a sharp devil's advocate. The user defended their idea. Ask ONE sharp follow-up challenge question that addresses a weakness in their reply or digs deeper. Be specific to what they said. Return ONLY the question, no preamble.`,
+          messages:[{role:'user', content:`Idea: ${currentIdea.text}\nMy challenge: ${window._devilQuestions[debateRound-1]}\nTheir reply: ${reply}`}]
+        })
+      });
+      const data = await resp.json();
+      const followUp = data.content.map(i=>i.text||'').join('').trim();
+      window._devilQuestions[debateRound] = followUp;
+
+      const aiBubble = document.createElement('div');
+      aiBubble.className = 'challenge-bubble';
+      aiBubble.textContent = followUp;
+      bubbles.appendChild(aiBubble);
+    } catch(e) {
+      const aiBubble = document.createElement('div');
+      aiBubble.className = 'challenge-bubble';
+      aiBubble.textContent = window._devilQuestions[debateRound] || "What's your unfair advantage here?";
+      bubbles.appendChild(aiBubble);
+    }
+
+    updateRoundsLeft();
+    btn.disabled = false;
+    input.disabled = false;
+    btn.textContent = 'Fire Back →';
+    input.focus();
+    bubbles.lastChild.scrollIntoView({ behavior:'smooth', block:'nearest' });
+    return;
+  }
+
+  btn.disabled = false;
+  input.disabled = false;
+  btn.textContent = 'Fire Back →';
+  bubbles.lastChild.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+// ======= BADGES =======
+function earnedBadge(b) {
+  if (b.type === 'streak')   return (state.streak >= b.req || state.longestStreak >= b.req);
+  if (b.type === 'count')    return state.ideas.length >= b.req;
+  if (b.type === 'legendary')return state.ideas.some(i=>i.rarity==='legendary');
+  if (b.type === 'epic3')    return state.ideas.filter(i=>i.rarity==='epic'||i.rarity==='legendary').length >= b.req;
+  if (b.type === 'debates')  return (state.debates||0) >= b.req;
+  if (b.type === 'allcat') {
+    const cats = new Set(state.ideas.map(i=>i.cat));
+    return cats.size >= b.req;
+  }
+  return false;
+}
+
+function checkBadges() {
+  BADGES.forEach(b => {
+    if (!state.earnedBadges.includes(b.id) && earnedBadge(b)) {
+      state.earnedBadges.push(b.id);
+      saveState();
+      setTimeout(() => toast(`Badge unlocked: ${b.name}`), 1200);
+    }
+  });
+}
+
+// ======= SHARE MODAL =======
+function openShareModal() {
+  if (!currentIdea) return;
+  const modal = document.getElementById('shareModal');
+  const preview = document.getElementById('shareCardPreview');
+  preview.className = 'share-card-preview ' + currentIdea.rarity;
+  document.getElementById('shareCardText').textContent = currentIdea.text.length > 120
+    ? currentIdea.text.slice(0,120) + '…'
+    : currentIdea.text;
+
+  const rTag = document.getElementById('shareRarityTag');
+  rTag.className = 'rarity-tag ' + currentIdea.rarity;
+  rTag.textContent = currentRarity.label;
+  document.getElementById('shareCat').textContent = currentIdea.cat;
+  document.getElementById('shareScore').innerHTML = `${currentIdea.score.toFixed(1)}<span class="denom">/10</span>`;
+
+  modal.classList.add('show');
+}
+
+function closeModal() { document.getElementById('shareModal').classList.remove('show'); }
+function closeModalOutside(e) { if (e.target === document.getElementById('shareModal')) closeModal(); }
+
+function copyShareText() {
+  if (!currentIdea) return;
+  const text = `My ${currentRarity.label} idea on IdeaDaily:\n\n"${currentIdea.text}"\n\nScore: ${currentIdea.score.toFixed(1)}/10 · Category: ${currentIdea.cat}\n\nDay ${state.streak} streak — ideadaily.app`;
+  navigator.clipboard.writeText(text).then(() => toast('Copied to clipboard!')).catch(()=>toast('Copy failed — try manually!'));
+}
+
+// ======= RENDER =======
+function render() {
+  // Date
+  document.getElementById('todayDate').textContent = new Date().toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'short'});
+
+  // Streak
+  document.getElementById('streakNum').textContent = state.streak;
+
+  // XP + Level
+  const xp = state.xp || 0;
+  const lvl = getLevel(xp);
+  const prog = getLevelProgress(xp);
+  document.getElementById('xpDisplay').textContent = xp;
+  document.getElementById('levelNum').textContent = lvl;
+  document.getElementById('xpFill').style.width = prog.pct + '%';
+  document.getElementById('xpNext').textContent = `${prog.curr} / ${prog.needed} XP`;
+
+  // Show done banner if needed
+  if (hasToday()) {
+    document.getElementById('doneBanner').classList.add('show');
+    document.getElementById('inputWrap').style.display = 'none';
+  }
+
+  // Badges
+  const bg = document.getElementById('badgesGrid');
+  bg.innerHTML = BADGES.map(b => {
+    const earned = earnedBadge(b);
+    const iconColor = earned ? 'var(--accent)' : 'var(--muted)';
+    const svg = SVG_ICONS[b.icon] ? SVG_ICONS[b.icon]
+      .replace('<svg ', `<svg width="22" height="22" style="color:${iconColor}" `) : '';
+    return `<div class="badge-card ${earned?'earned':'locked'}">
+      <div class="badge-icon">${svg}</div>
+      <div class="badge-name">${b.name}</div>
+      <div class="badge-req">${b.desc}</div>
+    </div>`;
+  }).join('');
+
+  // Idea log
+  const log = document.getElementById('ideaLog');
+  if (state.ideas.length === 0) {
+    log.innerHTML = '<div class="empty-state">// no ideas yet — be the first entry in your log</div>';
+    return;
+  }
+  const CAT_ICONS = { 'Business':'briefcase','App':'smartphone','Song':'music','Content':'video','Creative':'pen-tool','Social Good':'globe','Game':'gamepad','Wild Card':'sparkles' };
+
+  const sorted = getSortedIdeas();
+  log.innerHTML = sorted.slice(0,30).map((idea, idx) => {
+    const r = getRarity(idea.score);
+    const iconName = CAT_ICONS[idea.cat] || 'lightbulb';
+    const svg = SVG_ICONS[iconName] ? SVG_ICONS[iconName]
+      .replace('<svg ', `<svg width="15" height="15" style="color:var(--muted2)" `) : '';
+    const hasBrief = !!idea.brief;
+    return `<div class="log-item ${hasBrief ? 'log-has-brief' : ''}" onclick="openIdeaModal(${idx})">
+      <div class="log-cat-icon">${svg}</div>
+      <div class="log-content">
+        <div class="log-text">${escHtml(idea.text)}${hasBrief ? '<span style="color:#34d399;font-family:JetBrains Mono,monospace;font-size:0.62rem;text-transform:uppercase;letter-spacing:0.08em;margin-left:8px;vertical-align:middle">· Brief</span>' : ''}</div>
+        <div class="log-meta">
+          <div class="log-rarity-dot dot-${idea.rarity||'common'}"></div>
+          ${idea.cat} · ${idea.date}
+        </div>
+      </div>
+      <div class="log-score" style="color:${r.color}">${Number(idea.score).toFixed(1)}</div>
+    </div>`;
+  }).join('');
+  // Icons are inline SVG — no createIcons needed
+}
+
+function escHtml(t) {
+  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ======= TOAST =======
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+}
+
+// ======= DEVELOP IT =======
+const DEV_QUESTIONS = [
+  { label: 'The Who',        q: 'Who is this idea for? Describe one specific person — their situation, their frustration, their day.' },
+  { label: 'The Problem',    q: 'What\'s the exact painful moment this idea solves? Be as specific as possible.' },
+  { label: 'The Edge',       q: 'What already exists that\'s similar, and why does your idea win against it?' },
+  { label: 'The First Step', q: 'What\'s the single first thing you\'d actually do this week to test if this idea has legs?' },
+  { label: 'The Gut Check',  q: 'How excited would you be about this idea in 6 months — and what would need to be true for you to pursue it seriously?' },
+];
+
+let devStep = 0;
+let devAnswers = [];
+let devHelpUsed = false;
+
+function startDevelop() {
+  devStep = 0;
+  devAnswers = [];
+  devHelpUsed = false;
+  document.getElementById('coachBubbles').innerHTML = '';
+  document.getElementById('ideaBrief').classList.remove('show');
+  document.getElementById('developAnswerArea').style.display = 'block';
+  document.getElementById('developSection').classList.add('show');
+  document.getElementById('developSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  renderDevQuestion();
+}
+
+function renderDevQuestion() {
+  const q = DEV_QUESTIONS[devStep];
+  const pct = (devStep / DEV_QUESTIONS.length) * 100;
+  document.getElementById('developProgressFill').style.width = pct + '%';
+  document.getElementById('developProgressLabel').textContent = `Step ${devStep + 1} of ${DEV_QUESTIONS.length}`;
+
+  const bubbles = document.getElementById('coachBubbles');
+  const el = document.createElement('div');
+  el.className = 'coach-q';
+  el.innerHTML = `<div class="coach-q-label">${q.label}</div>${q.q}`;
+  bubbles.appendChild(el);
+  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  document.getElementById('developInput').value = '';
+  document.getElementById('developInput').focus();
+  devHelpUsed = false;
+  document.getElementById('helpBtn').disabled = false;
+  document.getElementById('developNextBtn').disabled = false;
+
+  const isLast = devStep === DEV_QUESTIONS.length - 1;
+  document.getElementById('developNextBtn').textContent = isLast ? 'Generate Brief →' : 'Next →';
+}
+
+async function askForHelp() {
+  if (devHelpUsed) return;
+  const helpBtn = document.getElementById('helpBtn');
+  helpBtn.disabled = true;
+  helpBtn.innerHTML = '<span class="spinner"><span></span><span></span><span></span></span> Thinking...';
+
+  const currentAnswer = document.getElementById('developInput').value.trim();
+  const q = DEV_QUESTIONS[devStep];
+  const prevContext = devAnswers.map((a,i) => `${DEV_QUESTIONS[i].label}: ${a}`).join('\n');
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 300,
+        system: `You are a friendly startup coach helping someone develop their idea. They are stuck on a question. Give 2-3 short concrete suggestions or prompts to help them think through their answer. Be specific to their idea. Use plain prose, no bullet points. Keep it under 80 words. Don't answer for them — help them find their own answer.`,
+        messages: [{ role: 'user', content: `Idea: ${currentIdea.text}\nCategory: ${currentIdea.cat}\n\nPrevious answers:\n${prevContext || 'None yet'}\n\nCurrent question: ${q.q}\nWhat they've written so far: "${currentAnswer || 'nothing yet'}"` }]
+      })
+    });
+    const data = await resp.json();
+    const helpText = data.content.map(i => i.text || '').join('').trim();
+
+    const bubbles = document.getElementById('coachBubbles');
+    const el = document.createElement('div');
+    el.className = 'coach-help';
+    el.innerHTML = `<div class="coach-help-label">Coach hint</div>${helpText}`;
+    bubbles.appendChild(el);
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch(e) {
+    toast('Could not load hint — try again');
+    helpBtn.disabled = false;
+  }
+
+  devHelpUsed = true;
+  helpBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Help me think`;
+}
+
+async function submitDevAnswer() {
+  const input = document.getElementById('developInput');
+  const answer = input.value.trim();
+  if (answer.length < 5) { toast('Add a bit more before moving on'); return; }
+
+  document.getElementById('developNextBtn').disabled = true;
+  document.getElementById('helpBtn').disabled = true;
+
+  // Show user's answer as bubble
+  const bubbles = document.getElementById('coachBubbles');
+  const userEl = document.createElement('div');
+  userEl.className = 'dev-user-reply';
+  userEl.textContent = answer;
+  bubbles.appendChild(userEl);
+
+  devAnswers.push(answer);
+  devStep++;
+
+  if (devStep < DEV_QUESTIONS.length) {
+    renderDevQuestion();
+  } else {
+    // All answered — generate brief
+    document.getElementById('developAnswerArea').style.display = 'none';
+    document.getElementById('developProgressFill').style.width = '100%';
+    document.getElementById('developProgressLabel').textContent = 'Complete — generating brief...';
+    await generateBrief();
+  }
+}
+
+async function generateBrief() {
+  const context = devAnswers.map((a, i) => `${DEV_QUESTIONS[i].label}: ${a}`).join('\n\n');
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 600,
+        system: `You are a startup coach. Based on the idea and the user's answers to 5 development questions, write a clean, punchy Idea Brief. Return ONLY valid JSON (no markdown, no backticks):
+{
+  "title": "<4-6 word punchy name for the idea>",
+  "oneLiner": "<One sentence that captures what it is and who it's for>",
+  "problem": "<1-2 sentences on the core problem>",
+  "solution": "<1-2 sentences on the solution>",
+  "targetUser": "<1 sentence describing the specific user>",
+  "edge": "<1 sentence on the competitive advantage>",
+  "firstStep": "<The concrete first action to validate this>",
+  "coachNote": "<1 sentence of honest encouragement or the most important thing to figure out next>"
+}`,
+        messages: [{ role: 'user', content: `Idea: ${currentIdea.text}\nCategory: ${currentIdea.cat}\n\n${context}` }]
+      })
+    });
+    const data = await resp.json();
+    const raw = data.content.map(i => i.text || '').join('').trim();
+    const brief = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    renderBrief(brief);
+  } catch(e) {
+    renderBrief({
+      title: currentIdea.text.slice(0, 30) + '...',
+      oneLiner: 'A promising idea worth developing further.',
+      problem: devAnswers[1] || 'A real problem people face.',
+      solution: currentIdea.text,
+      targetUser: devAnswers[0] || 'A specific group of people.',
+      edge: devAnswers[2] || 'A unique approach to the space.',
+      firstStep: devAnswers[3] || 'Talk to 5 potential users this week.',
+      coachNote: 'The fact you developed this this far means it\'s worth taking seriously.'
+    });
+  }
+  document.getElementById('developProgressLabel').textContent = 'Brief ready';
+}
+
+function renderBrief(b) {
+  const brief = document.getElementById('ideaBrief');
+  document.getElementById('briefContent').innerHTML = buildBriefHTML(b);
+  brief.classList.add('show');
+  window._currentBrief = b;
+  // Save brief into the idea record
+  if (state.ideas.length > 0 && state.ideas[0].date === todayStr()) {
+    state.ideas[0].brief = b;
+    saveState();
+  }
+  brief.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  toast('Idea Brief generated!');
+}
+
+function copyBrief() {
+  const b = window._currentBrief;
+  if (!b) return;
+  const text = `IDEA BRIEF — ${b.title}\n\n${b.oneLiner}\n\nPROBLEM\n${b.problem}\n\nSOLUTION\n${b.solution}\n\nTARGET USER\n${b.targetUser}\n\nCOMPETITIVE EDGE\n${b.edge}\n\nFIRST STEP\n${b.firstStep}\n\nCOACH'S NOTE\n${b.coachNote}\n\nDeveloped with IdeaDaily`;
+  navigator.clipboard.writeText(text).then(() => toast('Brief copied!')).catch(() => toast('Copy failed'));
+}
+
+function buildBriefHTML(b) {
+  return `
+    <div class="brief-section"><div class="brief-section-label">Idea</div><div class="brief-section-text"><strong>${escHtml(b.title)}</strong><br>${escHtml(b.oneLiner)}</div></div>
+    <div class="brief-section"><div class="brief-section-label">The Problem</div><div class="brief-section-text">${escHtml(b.problem)}</div></div>
+    <div class="brief-section"><div class="brief-section-label">The Solution</div><div class="brief-section-text">${escHtml(b.solution)}</div></div>
+    <div class="brief-section"><div class="brief-section-label">Target User</div><div class="brief-section-text">${escHtml(b.targetUser)}</div></div>
+    <div class="brief-section"><div class="brief-section-label">Competitive Edge</div><div class="brief-section-text">${escHtml(b.edge)}</div></div>
+    <div class="brief-section"><div class="brief-section-label">First Step This Week</div><div class="brief-section-text">${escHtml(b.firstStep)}</div></div>
+    <div class="brief-section"><div class="brief-section-label">Coach's Note</div><div class="brief-section-text" style="color:#34d399">${escHtml(b.coachNote)}</div></div>
+  `;
+}
+
+// ======= SORT =======
+const RARITY_ORDER = { legendary:5, epic:4, rare:3, uncommon:2, common:1 };
+let currentSort = 'date';
+
+function setSort(btn) {
+  document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentSort = btn.dataset.sort;
+  render();
+}
+
+function getSortedIdeas() {
+  const ideas = [...state.ideas];
+  if (currentSort === 'score') return ideas.sort((a,b) => b.score - a.score);
+  if (currentSort === 'rarity') return ideas.sort((a,b) => (RARITY_ORDER[b.rarity]||0) - (RARITY_ORDER[a.rarity]||0));
+  return ideas; // date = default (already newest first)
+}
+
+// ======= IDEA DETAIL MODAL =======
+let modalIdeaIndex = null;
+
+function openIdeaModal(idx) {
+  const sorted = getSortedIdeas();
+  const idea = sorted[idx];
+  if (!idea) return;
+  // Find actual index in state.ideas
+  modalIdeaIndex = state.ideas.findIndex(i => i.date === idea.date && i.text === idea.text);
+
+  const r = getRarity(idea.score);
+  const modal = document.getElementById('ideaModal');
+
+  // Rarity tag
+  const tag = document.getElementById('modalRarityTag');
+  tag.className = 'rarity-tag ' + r.name;
+  tag.textContent = r.label;
+
+  // Cat + date
+  document.getElementById('modalCat').textContent = idea.cat + ' · ' + idea.date;
+
+  // Score
+  const scoreEl = document.getElementById('modalScore');
+  scoreEl.textContent = Number(idea.score).toFixed(1);
+  scoreEl.style.color = r.color;
+
+  // Text
+  document.getElementById('modalText').textContent = idea.text;
+
+  // Sub-scores
+  const scoresEl = document.getElementById('modalScores');
+  if (idea.originality) {
+    scoresEl.innerHTML = `
+      <div class="score-cell"><div class="score-cell-label">Originality</div><div class="score-cell-val">${Number(idea.originality).toFixed(1)}</div></div>
+      <div class="score-cell"><div class="score-cell-label">Viability</div><div class="score-cell-val">${Number(idea.viability).toFixed(1)}</div></div>
+      <div class="score-cell"><div class="score-cell-label">Clarity</div><div class="score-cell-val">${Number(idea.clarity).toFixed(1)}</div></div>
+    `;
+    scoresEl.style.display = 'grid';
+  } else {
+    scoresEl.style.display = 'none';
+  }
+
+  // Feedback
+  const fbEl = document.getElementById('modalFeedback');
+  if (idea.feedback) { fbEl.textContent = idea.feedback; fbEl.style.display = 'block'; }
+  else { fbEl.style.display = 'none'; }
+
+  // Brief
+  const briefEl = document.getElementById('modalBrief');
+  const briefContent = document.getElementById('modalBriefContent');
+  if (idea.brief) {
+    briefContent.innerHTML = buildBriefHTML(idea.brief);
+    briefEl.classList.add('show');
+    document.getElementById('modalDevBtn').textContent = 'Re-develop →';
+  } else {
+    briefEl.classList.remove('show');
+    document.getElementById('modalDevBtn').textContent = 'Develop this idea →';
+  }
+
+  modal.classList.add('show');
+}
+
+function closeIdeaModal() { document.getElementById('ideaModal').classList.remove('show'); }
+function closeIdeaModalOutside(e) { if (e.target === document.getElementById('ideaModal')) closeIdeaModal(); }
+
+function reopenDevelop() {
+  closeIdeaModal();
+  if (modalIdeaIndex === null) return;
+  const idea = state.ideas[modalIdeaIndex];
+  // Set currentIdea so develop functions work
+  currentIdea = idea;
+  currentRarity = getRarity(idea.score);
+  // Scroll up and open develop section
+  document.getElementById('developSection').classList.add('show');
+  startDevelop();
+  setTimeout(() => document.getElementById('developSection').scrollIntoView({ behavior:'smooth', block:'start' }), 100);
+}
+
+// ======= ONBOARDING =======
+let currentSlide = 0;
+const TOTAL_SLIDES = 4;
+
+function nextSlide() {
+  currentSlide++;
+  if (currentSlide >= TOTAL_SLIDES) return;
+  document.querySelectorAll('.onboard-slide').forEach((s,i) => {
+    s.classList.toggle('active', i === currentSlide);
+  });
+}
+
+function skipLogin() {
+  dismissOnboarding();
+}
+
+async function handleGoogleSignIn() {
+  const btn = document.querySelector('.google-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Opening Google...'; }
+  try {
+    await window._fbSignIn();
+    // If popup worked, onAuthStateChanged fires automatically
+  } catch(e) {
+    console.error('Sign in error:', e.code, e.message);
+    toast('Sign in failed: ' + (e.code || e.message));
+    if (btn) { 
+      btn.disabled = false; 
+      btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg> Continue with Google`;
+    }
+  }
+}
+
+function dismissOnboarding() {
+  const screen = document.getElementById('authScreen');
+  screen.style.opacity = '0';
+  screen.style.transform = 'translateY(-20px)';
+  screen.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+  setTimeout(() => screen.style.display = 'none', 400);
+  localStorage.setItem('idaily_onboarded', '1');
+}
+
+function updateUserNav(user) {
+  const area = document.getElementById('userNavArea');
+  if (user && user.photoURL) {
+    area.innerHTML = `
+      <img src="${user.photoURL}" class="user-avatar" title="${user.displayName}" onclick="handleSignOut()"/>
+    `;
+  } else if (user) {
+    area.innerHTML = `<button class="sign-out-btn" onclick="handleSignOut()">Sign out</button>`;
+  } else {
+    area.innerHTML = `<button class="sign-out-btn" onclick="showLoginSlide()">Sign in</button>`;
+  }
+}
+
+function showLoginSlide() {
+  document.getElementById('authScreen').style.display = 'flex';
+  document.getElementById('authScreen').style.opacity = '1';
+  document.getElementById('authScreen').style.transform = 'none';
+  currentSlide = 3;
+  document.querySelectorAll('.onboard-slide').forEach((s,i) => {
+    s.classList.toggle('active', i === 3);
+  });
+}
+
+async function handleSignOut() {
+  await window._fbSignOut();
+  updateUserNav(null);
+  toast('Signed out');
+}
+
+// Called by Firebase auth state change
+window._onAuthReady = async (user) => {
+  updateUserNav(user);
+  if (user && window._loadedFromFirestore) {
+    // Merge Firestore state with local
+    const fsState = window._loadedFromFirestore;
+    // Use Firestore if it has more ideas (cross-device sync)
+    if (fsState.ideas && fsState.ideas.length >= state.ideas.length) {
+      state = fsState;
+      saveState();
+    }
+    render();
+  }
+  // Dismiss onboarding if already seen or just signed in
+  if (localStorage.getItem('idaily_onboarded') || user) {
+    dismissOnboarding();
+  }
+};
+
+// ======= INIT =======
+render();
+// Show onboarding only if never seen before and not waiting for Firebase auth
+if (localStorage.getItem('idaily_onboarded')) {
+  document.getElementById('authScreen').style.display = 'none';
+}
+// Firebase auth state will call _onAuthReady which handles dismissal
+</script>
+</body>
+</html>
