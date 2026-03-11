@@ -8,7 +8,7 @@
 <script type="module">
 // ===== FIREBASE SETUP =====
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
+import { getAuth, GoogleAuthProvider, signInWithRedirect, signOut, onAuthStateChanged, getRedirectResult } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
 import { getFirestore, doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
 
 const firebaseConfig = {
@@ -26,38 +26,8 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 
-// Expose to global scope for use in non-module scripts
-window._fbAuth = auth;
-window._fbDb = db;
-window._fbProvider = provider;
-window._fbSignIn = () => signInWithPopup(auth, provider);
+window._fbSignIn = () => signInWithRedirect(auth, provider);
 window._fbSignOut = () => signOut(auth);
-window._fbGetDoc = getDoc;
-window._fbSetDoc = setDoc;
-window._fbDoc = doc;
-
-// Auth state listener
-onAuthStateChanged(auth, async (user) => {
-  if (user) {
-    window._currentUser = user;
-    // Load user data from Firestore
-    try {
-      const ref = doc(db, 'users', user.uid);
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        const data = snap.data();
-        // Merge with local state - Firestore wins
-        window._loadedFromFirestore = data.state || null;
-      }
-    } catch(e) { console.warn('Firestore load error', e); }
-    window._onAuthReady && window._onAuthReady(user);
-  } else {
-    window._currentUser = null;
-    window._onAuthReady && window._onAuthReady(null);
-  }
-});
-
-// Save to Firestore
 window._saveToFirestore = async (stateObj) => {
   if (!window._currentUser) return;
   try {
@@ -65,6 +35,35 @@ window._saveToFirestore = async (stateObj) => {
     await setDoc(ref, { state: stateObj, updatedAt: new Date().toISOString() }, { merge: true });
   } catch(e) { console.warn('Firestore save error', e); }
 };
+
+// Handle redirect result first (coming back after Google sign in)
+getRedirectResult(auth).then(async (result) => {
+  if (result && result.user) {
+    window._currentUser = result.user;
+    try {
+      const ref = doc(db, 'users', result.user.uid);
+      const snap = await getDoc(ref);
+      if (snap.exists()) window._loadedFromFirestore = snap.data().state || null;
+    } catch(e) {}
+    window._onAuthReady && window._onAuthReady(result.user);
+  }
+}).catch((e) => console.warn('Redirect result error', e));
+
+// Auth state listener
+onAuthStateChanged(auth, async (user) => {
+  if (user) {
+    window._currentUser = user;
+    try {
+      const ref = doc(db, 'users', user.uid);
+      const snap = await getDoc(ref);
+      if (snap.exists()) window._loadedFromFirestore = snap.data().state || null;
+    } catch(e) {}
+    window._onAuthReady && window._onAuthReady(user);
+  } else {
+    window._currentUser = null;
+    window._onAuthReady && window._onAuthReady(null);
+  }
+});
 </script>
 <style>
 :root {
@@ -1613,7 +1612,7 @@ body::before {
           Continue with Google
         </button>
         <button class="login-skip" onclick="skipLogin()">Continue without account</button>
-        <div class="login-note">Your data saves locally without an account.<br>Sign in to sync across devices and never lose your streak.<br><br>⚠ Sign in requires opening this file directly in your browser — popups are blocked in preview iframes.</div>
+        <div class="login-note">Your data saves locally without an account.<br>Sign in to sync across devices and never lose your streak.</div>
       </div>
       <div class="onboard-nav" style="justify-content:flex-start;gap:12px">
         <div class="onboard-dots">
@@ -2659,27 +2658,14 @@ function skipLogin() {
 
 async function handleGoogleSignIn() {
   const btn = document.querySelector('.google-btn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Signing in...'; }
-  
-  // Wait for Firebase to be ready (up to 5 seconds)
-  let attempts = 0;
-  while (!window._fbSignIn && attempts < 50) {
-    await new Promise(r => setTimeout(r, 100));
-    attempts++;
-  }
-  
-  if (!window._fbSignIn) {
-    toast('Firebase not ready — try again in a moment');
-    if (btn) { btn.disabled = false; btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg> Continue with Google`; }
-    return;
-  }
-
+  if (btn) { btn.disabled = true; btn.textContent = 'Redirecting to Google...'; }
   try {
     await window._fbSignIn();
+    // Page will redirect to Google, then come back
   } catch(e) {
     toast('Sign in failed — try again');
     console.error(e);
-    if (btn) { btn.disabled = false; btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg> Continue with Google`; }
+    if (btn) btn.disabled = false;
   }
 }
 
