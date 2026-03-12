@@ -1688,7 +1688,7 @@ body::before {
 
   <!-- Done banner -->
   <div class="done-banner" id="doneBanner">
-    <strong>You've ideated today.</strong> Come back tomorrow to keep your streak alive. Your idea is in the log below.
+    <strong>You've ideated today — keep going!</strong> Extra ideas don't count toward your streak but every rep trains the muscle.
   </div>
 
   <!-- Input -->
@@ -1999,8 +1999,6 @@ function updateChar() {
 async function submitIdea() {
   const text = document.getElementById('ideaInput').value.trim();
   if (text.length < 15) { toast('Write a bit more about your idea!'); return; }
-  if (hasToday()) { toast('Already ideated today — come back tomorrow! 🔥'); return; }
-
   const btn = document.getElementById('submitBtn');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"><span></span><span></span><span></span></span> Analysing...';
@@ -2301,10 +2299,9 @@ function render() {
   document.getElementById('xpFill').style.width = prog.pct + '%';
   document.getElementById('xpNext').textContent = `${prog.curr} / ${prog.needed} XP`;
 
-  // Show done banner if needed
+  // Show done banner if already submitted today (but don't hide input)
   if (hasToday()) {
     document.getElementById('doneBanner').classList.add('show');
-    document.getElementById('inputWrap').style.display = 'none';
   }
 
   // Badges
